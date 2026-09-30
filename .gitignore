@@ -7,3 +7,5 @@ build/
 dist/
 models/*.pth
 data/
+.env
+.env.*

@@ -33,3 +33,7 @@ Workflow in the page (or via the API under `/api`):
 `examples/` contains actionable synthetic images (procedural brushed-metal-like textures, not real products): normal images for the two normal sets, plus scratch and foreign-object images for detection demos only.
 
 Run tests with `.venv/bin/python -m pytest -q`.
+
+## Additional local vision dependencies
+
+The project virtual environment also contains opencv-python-headless 4.11.0.86 and SciPy 1.15.3, alongside the existing CPU PyTorch encoder. Invoke `.venv/bin/python` directly. These packages provide video decoding and numerical operations; no video tracking functionality is preimplemented. Exact installed dependencies are pinned in `requirements.lock`. To recreate the environment, install that lockfile with the PyTorch CPU package index and obtain the local encoder weights as described above.
