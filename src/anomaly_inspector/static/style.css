@@ -1,0 +1,57 @@
+* { box-sizing: border-box; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  margin: 0; padding: 24px; background: #f4f6f8; color: #1f2933;
+}
+header h1 { margin: 0 0 4px; font-size: 24px; }
+.sub { margin: 0 0 20px; color: #52606d; font-size: 14px; }
+.card {
+  background: #fff; border: 1px solid #e4e7eb; border-radius: 10px;
+  padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.card h2 { margin: 0 0 12px; font-size: 17px; }
+.columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
+.hint { color: #52606d; font-size: 13px; line-height: 1.6; margin: 10px 0 0; }
+.msg { margin-left: 12px; font-size: 13px; }
+.msg.ok { color: #1b7a33; }
+.msg.err { color: #b42318; }
+button {
+  background: #2563eb; color: #fff; border: 0; border-radius: 6px;
+  padding: 8px 14px; font-size: 13px; cursor: pointer;
+}
+button:hover { background: #1d4ed8; }
+button.danger { background: #dc2626; padding: 3px 8px; font-size: 12px; }
+button.danger:hover { background: #b91c1c; }
+.thumb-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.thumb {
+  border: 1px solid #e4e7eb; border-radius: 8px; padding: 6px; width: 132px;
+  text-align: center; background: #fafbfc;
+}
+.thumb img { width: 118px; height: 118px; object-fit: cover; border-radius: 4px; }
+.thumb .name {
+  font-size: 11px; color: #52606d; word-break: break-all; margin: 4px 0;
+}
+#status { font-size: 14px; line-height: 1.7; }
+.inspect-result { margin-top: 14px; }
+.inspect-result.hidden { display: none; }
+.metrics { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; margin-bottom: 12px; }
+.metrics strong { font-size: 16px; }
+#metric-verdict.anomaly { color: #b42318; }
+#metric-verdict.normal { color: #1b7a33; }
+.overlay-wrap { margin-top: 12px; }
+#overlay { max-width: 100%; border: 1px solid #cbd2d9; border-radius: 6px; }
+label[for="alpha"], label { font-size: 13px; color: #3e4c59; }
+.examples { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; }
+.ex-item { text-align: center; width: 190px; }
+.ex-item img {
+  width: 180px; height: 180px; object-fit: cover;
+  border: 1px solid #cbd2d9; border-radius: 6px; display: block; margin: 0 auto 8px;
+}
+.ex-item button { margin: 2px; }
+#toast {
+  position: fixed; right: 20px; bottom: 20px; display: none;
+  background: #1f2933; color: #fff; padding: 10px 16px; border-radius: 8px;
+  font-size: 13px; max-width: 360px;
+}
+#toast.err { background: #b42318; }

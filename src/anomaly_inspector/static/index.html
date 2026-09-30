@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>工业表面异常定位</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>工业表面异常定位</h1>
+    <p class="sub">冻结 ResNet18 · layer2+layer3 局部描述子 · 最近邻距离 · CPU 离线运行</p>
+  </header>
+
+  <section class="card" id="status-card">
+    <h2>检测器状态</h2>
+    <div id="status">加载中…</div>
+    <p class="hint">
+      上传限制：仅接受 <strong>PNG / JPEG</strong>，单文件不超过 <strong>10 MB</strong>。
+      参考组与校准组必须为不同图像内容（重复上传或跨组相同内容会被拒绝）。
+      校准图独立于参考图，阈值 = 校准图分数的 95% 线性分位数，参考图不参与校准。
+    </p>
+  </section>
+
+  <section class="columns">
+    <div class="card" id="reference-card">
+      <h2>① 参考正常图（建立记忆库）</h2>
+      <input type="file" id="reference-input" accept="image/png,image/jpeg" multiple />
+      <div class="thumb-row" id="reference-list"></div>
+    </div>
+    <div class="card" id="calibration-card">
+      <h2>② 独立校准正常图（确定阈值）</h2>
+      <input type="file" id="calibration-input" accept="image/png,image/jpeg" multiple />
+      <div class="thumb-row" id="calibration-list"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>③ 构建记忆库与阈值</h2>
+    <p class="hint">从全部参考描述子中以确定性贪心最远点选择至多 256 项（不构造样本间全距离矩阵）；随后在独立校准图上计算 95% 分位数阈值。重建失败时保留旧库。</p>
+    <button id="build-btn">重建检测器</button>
+    <span id="build-msg" class="msg"></span>
+  </section>
+
+  <section class="card">
+    <h2>④ 检测新图（划痕 / 异物）</h2>
+    <input type="file" id="inspect-input" accept="image/png,image/jpeg" />
+    <div id="inspect-result" class="inspect-result hidden">
+      <div class="metrics">
+        <div>图像分数：<strong id="metric-score">–</strong></div>
+        <div>阈值（校准 95% 分位数）：<strong id="metric-threshold">–</strong></div>
+        <div>判定：<strong id="metric-verdict">–</strong></div>
+        <div>热图颜色上限：<span id="metric-vmax">–</span></div>
+      </div>
+      <label>热图叠加透明度：
+        <input type="range" id="alpha" min="0" max="100" value="45" />
+        <span id="alpha-val">45%</span>
+      </label>
+      <div class="overlay-wrap">
+        <img id="overlay" alt="检测热图叠加结果" />
+      </div>
+      <p class="hint" id="zero-note" hidden>
+        阈值为 0：颜色上限改用本图距离最大值显示；该情况说明校准图与参考描述子完全重合，建议增加校准多样性。
+      </p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>合成示例（用于功能验证，非真实产品）</h2>
+    <p class="hint">
+      由 <code>scripts/generate_examples.py</code> 生成的程序化纹理：
+      正常图用于上传到参考组与校准组；划痕/异物异常图仅用于检测演示，禁止用于校准。
+    </p>
+    <div class="examples">
+      <div class="ex-item">
+        <img src="/examples/normal_1.png" alt="正常示例 1" />
+        <button data-file="normal_1.png" data-group="reference">加入参考组</button>
+        <button data-file="normal_1.png" data-group="calibration">加入校准组</button>
+      </div>
+      <div class="ex-item">
+        <img src="/examples/normal_2.png" alt="正常示例 2" />
+        <button data-file="normal_2.png" data-group="reference">加入参考组</button>
+        <button data-file="normal_2.png" data-group="calibration">加入校准组</button>
+      </div>
+      <div class="ex-item">
+        <img src="/examples/normal_3.png" alt="正常示例 3" />
+        <button data-file="normal_3.png" data-group="reference">加入参考组</button>
+        <button data-file="normal_3.png" data-group="calibration">加入校准组</button>
+      </div>
+      <div class="ex-item">
+        <img src="/examples/normal_4.png" alt="正常示例 4" />
+        <button data-file="normal_4.png" data-group="reference">加入参考组</button>
+        <button data-file="normal_4.png" data-group="calibration">加入校准组</button>
+      </div>
+      <div class="ex-item">
+        <img src="/examples/normal_5.png" alt="正常示例 5" />
+        <button data-file="normal_5.png" data-group="reference">加入参考组</button>
+        <button data-file="normal_5.png" data-group="calibration">加入校准组</button>
+      </div>
+      <div class="ex-item">
+        <img src="/examples/scratch_1.png" alt="划痕异常示例" />
+        <button data-file="scratch_1.png" data-group="inspect">检测此划痕图</button>
+      </div>
+      <div class="ex-item">
+        <img src="/examples/foreign_object_1.png" alt="异物异常示例" />
+        <button data-file="foreign_object_1.png" data-group="inspect">检测此异物图</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
