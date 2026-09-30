@@ -1,0 +1,12 @@
+torch==2.6.0+cpu
+torchvision==0.21.0+cpu
+fastapi==0.115.12
+uvicorn==0.34.2
+python-multipart==0.0.20
+numpy==2.2.6
+Pillow==11.1.0
+httpx==0.28.1
+pytest==8.3.5
+build==1.2.2.post1
+setuptools==80.9.0
+wheel==0.45.1
