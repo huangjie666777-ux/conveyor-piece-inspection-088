@@ -35,6 +35,59 @@
     </div>
   </section>
 
+  <section class="card" id="video-card">
+    <h2>⑤ 传送带视频逐件追踪质检</h2>
+    <p class="hint">
+      上传固定机位视频（<strong>MP4/AVI，≤200MB，1–120fps，边长 120–3840px</strong>）与
+      <strong>同尺寸空传送带背景图（PNG/JPEG，≤10MB）</strong>，在预览上拖画矩形检测区、
+      点击设置竖直计数线，选择行进方向后提交。逐帧背景差分，Kalman + 外观 + 匈牙利一对一追踪；
+      仅真实观测按指定方向过线才计件，同轨迹回穿/抖动不重复，预测框不计件；
+      粘连候选不合并轨迹、不强行判定。任务开始即固定检测器快照。
+    </p>
+    <div class="video-controls">
+      <label>视频 <input type="file" id="v-video" accept="video/mp4,video/x-msvideo,.mp4,.avi" /></label>
+      <label>空背景图 <input type="file" id="v-bg" accept="image/png,image/jpeg" /></label>
+      <label>方向
+        <select id="v-direction">
+          <option value="lr">从左到右 →</option>
+          <option value="rl">从右到左 ←</option>
+        </select>
+      </label>
+      <button id="v-submit" disabled>开始后台质检</button>
+      <button id="v-cancel" class="danger" hidden>取消任务</button>
+    </div>
+    <div id="v-progress" class="v-progress hidden"></div>
+    <div class="v-stage">
+      <div class="v-canvas-wrap">
+        <canvas id="v-setup" width="720" height="300"></canvas>
+        <p class="hint">在画面上<strong>拖出矩形</strong>设为检测区，<strong>单击</strong>设置竖直计数线（绿）。</p>
+      </div>
+    </div>
+    <div id="v-result" class="v-result hidden">
+      <div class="v-play">
+        <video id="v-player" controls muted playsinline></video>
+        <canvas id="v-overlay"></canvas>
+      </div>
+      <div class="v-side">
+        <h3>过线工件（点击行回看证据）</h3>
+        <table id="v-pieces">
+          <thead>
+            <tr><th>ID</th><th>时间(s)</th><th>分数</th><th>阈值</th><th>结论</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div id="v-evidence" class="v-evidence hidden">
+          <h3 id="v-ev-title">证据</h3>
+          <div class="v-ev-imgs">
+            <div><img id="v-ev-crop" alt="工件证据裁剪" /><span>最近完整无粘连裁片</span></div>
+            <div><img id="v-ev-heat" alt="异常热图证据" /><span>异常热图叠加</span></div>
+          </div>
+          <p id="v-ev-note" class="hint"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="card">
     <h2>③ 构建记忆库与阈值</h2>
     <p class="hint">从全部参考描述子中以确定性贪心最远点选择至多 256 项（不构造样本间全距离矩阵）；随后在独立校准图上计算 95% 分位数阈值。重建失败时保留旧库。</p>

@@ -37,3 +37,40 @@ Run tests with `.venv/bin/python -m pytest -q`.
 ## Additional local vision dependencies
 
 The project virtual environment also contains opencv-python-headless 4.11.0.86 and SciPy 1.15.3, alongside the existing CPU PyTorch encoder. Invoke `.venv/bin/python` directly. These packages provide video decoding and numerical operations; no video tracking functionality is preimplemented. Exact installed dependencies are pinned in `requirements.lock`. To recreate the environment, install that lockfile with the PyTorch CPU package index and obtain the local encoder weights as described above.
+
+## Conveyor video per-piece tracking QC
+
+In addition to single-image inspection, section ⑤ of the page runs fixed-camera conveyor video quality control:
+
+1. Upload a video (**MP4/AVI, ≤ 200 MB, 1–120 fps, frame sides 120–3840 px**) and an empty-belt background image (**PNG/JPEG, ≤ 10 MB, exactly the video dimensions**). Limits are also returned by `GET /api/video/limits`.
+2. Drag a rectangle for the detection ROI and click to place the vertical counting line; choose left-to-right (`lr`) or right-to-left (`rl`). Submit starts a **background job** (`POST /api/jobs`); progress is polled from `GET /api/jobs/{id}` and `POST /api/jobs/{id}/cancel` stops processing (a cancelled job is explicitly `cancelled`, never reported as completed).
+3. Decoding is strictly one frame at a time (`cv2.VideoCapture.read`); the video is never loaded into memory. Per frame: grayscale blur → absdiff against the empty background → threshold + open/close morphology → contour filtering by area, side length and fill ratio. Oversized blobs and blobs that erosion splits into two cores are flagged **merged**, excluded from association, and never force a verdict.
+4. Identity uses a constant-velocity `cv2.KalmanFilter` on `(cx, cy, w, h)`, the existing ResNet18 feature extractor pooled over each padded crop as an L2 appearance descriptor, and SciPy Hungarian one-to-one assignment on Mahalanobis + appearance cost with hard gates. Missed detections coast up to 8 frames; predicted boxes are drawn dashed and can **never** trigger counting. A piece counts once, on a real observation, only when its previous real centre crosses the line in the configured direction (jitter/re-crossing is latched off; tracks first seen beyond the line cannot count).
+5. At crossing, the most recent **complete, non-merged, ROI-interior, line-clear** crop is checked with the original anomaly algorithm; track ID, video time, score, fixed-snapshot threshold, verdict (`ok` / `defect` / `review`) and crop + heatmap evidence are stored. Missing/unreliable evidence becomes `review` (待复核) rather than a pass/fail guess.
+
+### Detector snapshot and atomic commit
+
+When a job starts, the active bank + threshold are snapshotted once (`AppState.detector_snapshot`, also saved under `data/jobs/<id>/detector_snapshot.pt`). Rebuilding the detector later never changes a running or finished task. The bank and threshold are now committed together as one atomic `data/detector.pt` bundle (temp file + fsync + single rename), fixing the previous failure/restart window where independent `memory_bank.pt` and `state.json` renames could pair a new bank with an old threshold; legacy files are still read on startup.
+
+### Results, restart, playback
+
+Completed jobs persist under `data/jobs/<id>/` (`job.json`, the uploaded video, background, evidence PNGs, detector snapshot) and remain viewable after restart; jobs found `running` on startup are explicitly marked `interrupted`. The page plays the uploaded video with a synchronized canvas overlay (ROI, counting line, observed vs coasted track boxes, IDs); clicking a result row seeks to the crossing instant and opens the stored crop and anomaly heatmap. Evidence is served from `/api/jobs/{id}/evidence/{track}/{crop|heatmap}` and the video supports HTTP range requests.
+
+### Synthetic demo assets
+
+`.venv/bin/python scripts/generate_conveyor_demo.py` writes `examples/video/`:
+
+- `conveyor_demo.mp4` — 640×320 @ 20 fps, five pieces cross left-to-right (four normal, one scratched/defective); two pieces briefly tailgate/merge inside the ROI;
+- `background.png` — matching empty-belt frame;
+- `library_normal_1..8.png` — clean codec-consistent piece crops cut from the encoded video; use 1–4 as reference, 5–8 as calibration;
+- `defective_truth.png` — the scratched piece crop (verification only, never calibrate on it).
+
+ROI for the demo: x=20 y=40 w=600 h=240, counting line x=320, direction left-to-right.
+
+### Known limitations
+
+- Research-grade background subtraction: assumes a fixed camera, a representative empty-belt image, stable lighting and a flat belt; shadows, reflections and heavy compression can over/under-segment. Thresholds are fixed defaults tuned for the demo; real deployments need per-line tuning.
+- Merged/touching candidates are withheld rather than split, so a piece only seen while merged can miss a clean verdict and is marked `review`; there is no instance segmentation.
+- Appearance is a single mean pooled ResNet descriptor per crop; identical-looking parts rely mostly on motion gating, and long full occlusions beyond the coast window start new identities.
+- Evidence crops and tracks are tied to the configured ROI/line; a bad line placement or ROI clipping biases counts.
+- Single background worker (one running job at a time); CPU-only throughput depends on piece count per frame (one ResNet pass per clean detection per frame).

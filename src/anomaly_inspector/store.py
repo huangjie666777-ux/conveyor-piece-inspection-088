@@ -1,8 +1,13 @@
 """Persistent application state: uploaded samples, memory bank and threshold.
 
-Rebuild writes new state to temporary files first; a failed rebuild keeps the
-previous bank usable. Detection snapshots the active bank under a lock, so a
-rebuild can never make a single detection mix two bank versions.
+The bank and its threshold are one logical detector version.  A rebuild
+writes a *single* new state file (bank tensor, threshold and metadata all in
+one temporary file) and atomically renames it over the previous one, then
+swaps the in-memory copy.  Older releases wrote ``memory_bank.pt`` and
+``state.json`` independently: a crash or restart between the two renames (or a
+partially written file from one of them) could leave a new bank paired with
+the old threshold or vice versa.  The combined file eliminates that mixed
+file window; legacy files are still read on startup.
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ class AppState:
         self.images_dir = self.data_dir / "images"
         self.state_path = self.data_dir / "state.json"
         self.bank_path = self.data_dir / "memory_bank.pt"
+        self.detector_path = self.data_dir / "detector.pt"
         self.images_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self.extractor = FeatureExtractor(weights_path)
@@ -53,6 +59,36 @@ class AppState:
         self.reference_count: int = 0
         self.calibration_count: int = 0
         self._load()
+
+    @dataclass(frozen=True)
+    class DetectorSnapshot:
+        """Immutable detector version fixed for the lifetime of a task."""
+
+        version: str
+        built_at: str | None
+        bank: torch.Tensor
+        threshold: float
+
+    def detector_snapshot(self) -> "AppState.DetectorSnapshot":
+        """Snapshot the active bank + threshold under the lock.
+
+        A video task calls this once when it starts and keeps using the same
+        tensors afterwards; a later rebuild swaps new tensors in but never
+        mutates these, so the task cannot mix detector versions.
+        """
+        with self._lock:
+            if self.memory_bank is None or self.threshold is None:
+                raise ValueError(
+                    "memory bank not built yet; add samples and build first"
+                )
+            return AppState.DetectorSnapshot(
+                version=hashlib.sha256(
+                    self.memory_bank.numpy().tobytes()
+                ).hexdigest()[:16],
+                built_at=self.built_at,
+                bank=self.memory_bank,
+                threshold=float(self.threshold),
+            )
 
     # ------------------------------------------------------------------ upload
 
@@ -144,25 +180,33 @@ class AppState:
                 cal_scores.append(score)
             threshold = linear_quantile(cal_scores, CALIBRATION_QUANTILE)
 
-            tmp_bank = self.bank_path.with_suffix(".pt.tmp")
-            torch.save(bank, tmp_bank)
             built_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-            new_meta = self._metadata_dict()
-            new_meta.update(
-                {
-                    "threshold": threshold,
-                    "calibration_scores": cal_scores,
-                    "built_at": built_at,
-                    "memory_bank_items": int(bank.shape[0]),
-                }
-            )
-            tmp_meta = self.state_path.with_suffix(".json.tmp")
-            tmp_meta.write_text(json.dumps(new_meta, indent=2))
+            samples_meta = [vars(s) for s in self.samples.values()]
+            bundle = {
+                "format": "detector-bundle-v1",
+                "bank": bank,
+                "threshold": threshold,
+                "calibration_scores": cal_scores,
+                "built_at": built_at,
+                "memory_bank_items": int(bank.shape[0]),
+                "samples": samples_meta,
+                "preprocess": imaging.PREPROCESS_INFO,
+            }
+            tmp_bundle = self.detector_path.with_name("detector.pt.tmp")
+            torch.save(bundle, tmp_bundle)
+            # fsync the temp file so the rename cannot expose truncated data
+            # after a crash (the exact mixed-file bug seen on restart).
+            with open(tmp_bundle, "rb") as handle:
+                os.fsync(handle.fileno())
 
-            # Commit phase: replace files, then swap the in-memory version.
-            os.replace(tmp_bank, self.bank_path)
-            os.replace(tmp_meta, self.state_path)
+            # Single atomic commit: bank and threshold always swap together.
+            os.replace(tmp_bundle, self.detector_path)
+            dir_fd = os.open(self.data_dir, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
             self.memory_bank = bank
             self.threshold = threshold
             self.calibration_scores = cal_scores
@@ -173,14 +217,8 @@ class AppState:
 
     def inspect_bytes(self, data: bytes) -> dict:
         loaded = imaging.load_image_bytes(data, hashlib.sha256(data).hexdigest())
-        with self._lock:
-            if self.memory_bank is None or self.threshold is None:
-                raise ValueError(
-                    "memory bank not built yet; add samples and build first"
-                )
-            # Snapshot under the lock; inference uses a fixed bank version.
-            bank = self.memory_bank
-            threshold = self.threshold
+        snapshot = self.detector_snapshot()
+        bank, threshold = snapshot.bank, snapshot.threshold
 
         descriptors = self.extractor.extract_image(loaded.tensor)
         score, distances = image_score(descriptors, bank)
@@ -248,20 +286,45 @@ class AppState:
         os.replace(tmp, self.state_path)
 
     def _load(self) -> None:
+        meta = {}
+        # Samples are plain metadata (never paired with a bank version), so
+        # they are always read from the independently maintained state.json,
+        # which is rewritten on every upload/delete.
         if self.state_path.exists():
-            meta = json.loads(self.state_path.read_text())
+            try:
+                meta = json.loads(self.state_path.read_text())
+            except Exception:
+                meta = {}
+        if self.detector_path.exists():
+            try:
+                bundle = torch.load(self.detector_path, map_location="cpu")
+                bank = bundle.get("bank")
+                if isinstance(bank, torch.Tensor) and bank.ndim == 2:
+                    self.memory_bank = bank
+                    self.threshold = bundle.get("threshold")
+                    self.calibration_scores = bundle.get(
+                        "calibration_scores", []
+                    )
+                    self.built_at = bundle.get("built_at")
+            except Exception:
+                # Corrupt/partial bundle (e.g. crash while writing on an old
+                # release): fall back to legacy files instead of crashing.
+                pass
+        if meta:
             for raw in meta.get("samples", []):
                 sample = Sample(**raw)
                 if (self.images_dir / (sample.sample_id + ".png")).exists():
                     self.samples[sample.sample_id] = sample
-            self.threshold = meta.get("threshold")
-            self.calibration_scores = meta.get("calibration_scores", [])
-            self.built_at = meta.get("built_at")
-        if self.bank_path.exists():
+            if self.memory_bank is None:
+                self.threshold = meta.get("threshold")
+                self.calibration_scores = meta.get("calibration_scores", [])
+                self.built_at = meta.get("built_at")
+        if self.memory_bank is None and self.bank_path.exists():
             try:
                 bank = torch.load(self.bank_path, map_location="cpu")
                 if isinstance(bank, torch.Tensor) and bank.ndim == 2:
                     self.memory_bank = bank
+                    self.threshold = meta.get("threshold")
             except Exception:
                 # Corrupt bank: keep metadata but report an unbuilt detector
                 # rather than crashing startup.
