@@ -65,6 +65,73 @@
     </div>
   </section>
 
+  <section class="card" id="video-card">
+    <h2>⑤ 传送带视频逐件追踪质检</h2>
+    <p class="hint">
+      上传固定机位视频与<strong>同尺寸空传送带背景图</strong>。支持
+      <strong>MP4 / MOV / AVI</strong>，单视频不超过 <strong>200 MB</strong>，
+      帧率 5–30 fps，短边 ≥ 240、长边 ≤ 1920，时长 ≤ 120 秒；逐帧解码，不读入整段视频。
+      过线由真实观测确认（预测框不触发），同轨迹回穿/抖动不重复计件；粘连候选不合并轨迹、不自动判合格，缺证据标<strong>待复核</strong>。
+    </p>
+    <div class="video-form">
+      <label>视频：<input type="file" id="job-video" accept="video/mp4,video/quicktime,video/x-msvideo" /></label>
+      <label>空背景图：<input type="file" id="job-bg" accept="image/png,image/jpeg" /></label>
+      <button id="job-validate">读取视频并生成建议参数</button>
+    </div>
+    <div id="job-validate-msg" class="msg"></div>
+    <div id="job-params" class="job-params" hidden>
+      <label>检测区 ROI（x1,y1,x2,y2）<input id="job-roi" size="22" /></label>
+      <label>竖直计数线 x<input id="job-line" type="number" size="6" /></label>
+      <label>行进方向
+        <select id="job-direction">
+          <option value="ltr">左 → 右</option>
+          <option value="rtl">右 → 左</option>
+        </select>
+      </label>
+      <label>差分阈值<input id="job-diff" type="number" value="32" /></label>
+      <label>最小面积<input id="job-min-area" type="number" value="400" /></label>
+      <label>工件最大面积<input id="job-max-area" type="number" value="20000" /></label>
+      <label>最小边长<input id="job-min-side" type="number" value="18" /></label>
+      <label>最大边长<input id="job-max-side" type="number" value="160" /></label>
+    </div>
+    <div class="video-form" style="margin-top:10px">
+      <button id="job-start" disabled>开始后台质检</button>
+      <button id="job-cancel" class="danger" disabled>取消任务</button>
+      <span id="job-progress-msg" class="msg"></span>
+    </div>
+    <div id="job-replay" hidden style="margin-top:16px">
+      <div class="replay-wrap">
+        <video id="job-video-el" controls muted preload="metadata"></video>
+        <canvas id="job-canvas"></canvas>
+      </div>
+      <p class="hint">
+        绿线＝计数线，虚线框＝检测区；轨迹按轨迹 ID 着色，圆点为真实观测位置。
+        粘连帧以红色提示。点击列表中的工件可跳转到其过线时刻并查看证据热图。
+      </p>
+      <div id="job-results" class="job-results"></div>
+      <div id="job-evidence" class="job-evidence" hidden>
+        <h3 id="ev-title">证据</h3>
+        <div class="metrics">
+          <div>轨迹 ID：<strong id="ev-id">–</strong></div>
+          <div>视频时间：<strong id="ev-time">–</strong></div>
+          <div>分数：<strong id="ev-score">–</strong></div>
+          <div>阈值：<strong id="ev-thr">–</strong></div>
+          <div>结论：<strong id="ev-verdict">–</strong></div>
+        </div>
+        <p class="hint" id="ev-reason"></p>
+        <div class="ev-images">
+          <div><img id="ev-crop" alt="工件证据裁剪图" /></div>
+          <div><img id="ev-heat" alt="证据热图" /></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>历史视频任务（重启后可回看）</h2>
+    <div id="job-history" class="job-history"></div>
+  </section>
+
   <section class="card">
     <h2>合成示例（用于功能验证，非真实产品）</h2>
     <p class="hint">
@@ -110,5 +177,6 @@
 
   <div id="toast"></div>
   <script src="/static/app.js"></script>
+  <script src="/static/video.js"></script>
 </body>
 </html>

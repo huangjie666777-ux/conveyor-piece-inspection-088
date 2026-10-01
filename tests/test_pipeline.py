@@ -96,3 +96,36 @@ def test_color_scale_is_fixed_not_per_image():
 def test_invalid_upload_rejected():
     with pytest.raises(ValueError):
         imaging.decode_image(b"not an image")
+
+
+def test_bank_and_threshold_never_mix_after_restart(tmp_path):
+    state = AppState(tmp_path / "data", WEIGHTS)
+    for seed in (1, 2, 3, 4):
+        state.add_sample("reference", f"r{seed}.png", _png(seed))
+    for seed in (11, 12, 13, 14):
+        state.add_sample("calibration", f"c{seed}.png", _png(seed))
+    state.rebuild()
+
+    # Tamper with the content-addressed bank file named in metadata:
+    # restart must detect the hash mismatch and refuse to pair the stale
+    # threshold with an unrelated/missing bank (no mixed detector).
+    import json
+
+    meta_path = tmp_path / "data" / "state.json"
+    meta = json.loads(meta_path.read_text())
+    bank_file = meta["bank_file"]
+    bank_path = tmp_path / "data" / "banks" / bank_file
+    different = state.memory_bank.clone()
+    different.add_(1.0)
+    torch.save(different, bank_path)
+
+    restored = AppState(tmp_path / "data", WEIGHTS)
+    assert restored.memory_bank is None
+    assert restored.threshold is None
+    with pytest.raises(ValueError, match="not built"):
+        restored.inspect_bytes(_png(11))
+
+    # Rebuilding recovers the service cleanly.
+    restored.rebuild()
+    assert restored.memory_bank is not None
+    assert restored.threshold is not None

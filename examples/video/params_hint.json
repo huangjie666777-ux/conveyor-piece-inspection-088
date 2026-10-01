@@ -1,0 +1,26 @@
+{
+  "video": "conveyor_demo.mp4",
+  "background": "conveyor_background.png",
+  "roi": [
+    30,
+    20,
+    450,
+    250
+  ],
+  "line_x": 240,
+  "direction": "ltr",
+  "diff_threshold": 40,
+  "min_area": 900,
+  "max_piece_area": 4200,
+  "min_side": 30,
+  "max_side": 90,
+  "note": "max_side 90 keeps single 52px parts but rejects the touching pair blob",
+  "expected": {
+    "individual_pieces": 4,
+    "defective_track": "B",
+    "touching_pair": [
+      "C",
+      "D"
+    ]
+  }
+}
